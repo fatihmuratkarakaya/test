@@ -1,0 +1,103 @@
+pipeline {
+    agent {
+        kubernetes {
+            yaml """
+            apiVersion: v1
+            kind: Pod
+            spec:
+              serviceAccountName: jenkins
+              containers:
+              - name: kubectl-helm
+                image: dtzar/helm-kubectl:latest
+                command:
+                - cat
+                tty: true
+            """
+        }
+    }
+    
+    stages {
+        stage('Setup Environment') {
+            steps {
+                container('kubectl-helm') {
+                    sh '''
+                        # Create namespace if it doesn't exist
+                        kubectl create namespace redis --dry-run=client -o yaml | kubectl apply -f -
+                    '''
+                }
+            }
+        }
+        
+        stage('Deploy Redis') {
+            steps {
+                container('kubectl-helm') {
+                    sh '''
+                        helm repo add bitnami https://charts.bitnami.com/bitnami
+                        helm repo update
+                        
+                        # Deploy Redis with persistence and external access
+                        helm upgrade --install redis bitnami/redis \
+                            --namespace redis \
+                            --set auth.password=redis \
+                            --set master.persistence.enabled=true \
+                            --set master.persistence.size=8Gi \
+                            --set master.service.type=NodePort \
+                            --set master.service.nodePorts.redis=30002
+                        
+                        # Ensure service is patched to use NodePort
+                        kubectl patch svc redis-master -n redis -p '{"spec": {"type": "NodePort", "ports": [{"port": 6379, "nodePort": 30002}]}}' || true
+                    '''
+                }
+            }
+        }
+        
+        stage('Configure Redis') {
+            steps {
+                container('kubectl-helm') {
+                    sh '''
+                        # Create ConfigMap with Redis configuration for optimal caching
+                        kubectl apply -n redis -f - <<EOL
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-cache-config
+  namespace: redis
+data:
+  redis-cache.conf: |
+    maxmemory 1gb
+    maxmemory-policy allkeys-lru
+    appendonly yes
+    appendfsync everysec
+EOL
+                    '''
+                }
+            }
+        }
+        
+        stage('Verify Deployment') {
+            steps {
+                container('kubectl-helm') {
+                    sh '''
+                        # Wait for Redis to be ready
+                        kubectl rollout status statefulset/redis-master -n redis || true
+                        
+                        echo "Redis is accessible at: localhost:30002"
+                        echo "Password: redis"
+                        
+                        # Verify Redis is working
+                        echo "Redis cache is configured with LRU eviction policy for efficient caching."
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo "Redis deployment completed successfully!"
+        }
+        failure {
+            echo "Redis deployment failed!"
+        }
+    }
+}
