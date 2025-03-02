@@ -42,7 +42,7 @@ pipeline {
                             --set master.persistence.enabled=true \
                             --set master.persistence.size=8Gi \
                             --set master.service.type=NodePort \
-                            --set master.service.nodePorts.redis=30002
+                            --set master.service.nodePorts.redis="30002"
                         
                         # Ensure service is patched to use NodePort
                         kubectl patch svc redis-master -n redis -p '{"spec": {"type": "NodePort", "ports": [{"port": 6379, "nodePort": 30002}]}}' || true
