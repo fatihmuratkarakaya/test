@@ -36,13 +36,24 @@ pipeline {
                         helm repo update
                         
                         # Deploy Redis with persistence and external access
+                        # Creating a values file instead of using --set for complex values
+                        cat > redis-values.yaml << EOF
+auth:
+  password: "redis"
+master:
+  persistence:
+    enabled: true
+    size: 8Gi
+  service:
+    type: NodePort
+    nodePorts:
+      redis: "30002"
+EOF
+                        
+                        # Install using the values file
                         helm upgrade --install redis bitnami/redis \
                             --namespace redis \
-                            --set auth.password=redis \
-                            --set master.persistence.enabled=true \
-                            --set master.persistence.size=8Gi \
-                            --set master.service.type=NodePort \
-                            --set master.service.nodePorts.redis="30002"
+                            -f redis-values.yaml
                         
                         # Ensure service is patched to use NodePort
                         kubectl patch svc redis-master -n redis -p '{"spec": {"type": "NodePort", "ports": [{"port": 6379, "nodePort": 30002}]}}' || true
