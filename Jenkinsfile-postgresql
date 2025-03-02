@@ -1,4 +1,3 @@
-// Jenkinsfile
 pipeline {
     agent {
         kubernetes {
@@ -36,11 +35,12 @@ pipeline {
                         helm repo add bitnami https://charts.bitnami.com/bitnami
                         helm repo update
                         
-                        # Deploy PostgreSQL with persistence and backup configuration
+                        # Deploy PostgreSQL with persistence and external access
                         helm upgrade --install postgresql bitnami/postgresql \\
                             --namespace postgresql \\
+                            --set global.postgresql.auth.existingSecret=postgresql-secret \\
+                            --set global.postgresql.auth.secretKeys.adminPasswordKey=postgres-password \\
                             --set global.postgresql.auth.username=postgres \\
-                            --set global.postgresql.auth.password=postgres \\
                             --set global.postgresql.auth.database=postgres \\
                             --set primary.persistence.enabled=true \\
                             --set primary.persistence.size=8Gi \\
