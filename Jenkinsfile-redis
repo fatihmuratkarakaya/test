@@ -35,11 +35,11 @@ pipeline {
                         helm repo add bitnami https://charts.bitnami.com/bitnami
                         helm repo update
                         
-                        # Deploy Redis with persistence and external access
-                        # Creating a values file instead of using --set for complex values
+                        # Creating a values file for Redis
                         cat > redis-values.yaml << EOF
 auth:
-  password: "redis"
+  existingSecret: redis-secret
+  existingSecretPasswordKey: redis-password
 master:
   persistence:
     enabled: true
